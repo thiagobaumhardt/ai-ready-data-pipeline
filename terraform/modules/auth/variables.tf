@@ -1,20 +1,20 @@
 variable "project_id" {
-  description = "ID do projeto GCP"
+  description = "GCP project ID"
   type        = string
 }
 
 variable "region" {
-  description = "Região padrão do GCP"
+  description = "Default GCP region"
   type        = string
   default     = "us-central1"
 }
 
 variable "credentials_file" {
-  description = "Caminho para o arquivo JSON da service account usada para autenticação"
+  description = "Path to the service account JSON key file used for authentication"
   type        = string
 
   validation {
     condition     = fileexists(var.credentials_file)
-    error_message = "Arquivo de credenciais não encontrado em: ${var.credentials_file}"
+    error_message = "Credentials file not found at: ${var.credentials_file}"
   }
 }

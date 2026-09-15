@@ -1,83 +1,107 @@
 variable "cluster_name" {
-  description = "Nome do cluster kind (Kubernetes in Docker)"
+  description = "Name of the kind cluster (Kubernetes in Docker)"
   type        = string
   default     = "airflow-local"
 }
 
 variable "dags_host_path" {
-  description = "Caminho no host (sua máquina) com as DAGs, montado no node do kind"
+  description = "Local (host) path with the DAGs, mounted into the kind node. Deliberately outside the terraform tree: DAGs are pipeline code, not infra"
   type        = string
-  default     = "./dags"
+  default     = "../../airflow/dags"
 }
 
 variable "dags_container_path" {
-  description = "Caminho dentro do node do kind onde o host_path é montado (e depois exposto aos pods via hostPath volume)"
+  description = "Path inside the kind node where host_path is mounted (and then exposed to pods via a hostPath volume)"
   type        = string
   default     = "/opt/airflow/dags"
 }
 
 variable "airflow_namespace" {
-  description = "Namespace do Kubernetes onde o Airflow será instalado"
+  description = "Kubernetes namespace where Airflow will be installed"
   type        = string
   default     = "airflow"
 }
 
 variable "airflow_release_name" {
-  description = "Nome do Helm release do Airflow"
+  description = "Name of the Airflow Helm release"
   type        = string
   default     = "airflow"
 }
 
 variable "airflow_chart_version" {
-  description = "Versão do chart apache-airflow/airflow"
+  description = "Version of the apache-airflow/airflow chart (1.17.0+ installs Airflow 3 by default; this project's DAGs use the airflow.sdk TaskFlow API, which is Airflow 3 only)"
   type        = string
-  default     = "1.15.0"
+  default     = "1.19.0"
+}
+
+variable "gcs_bucket_name" {
+  description = "GCS bucket the fhir_ingestion DAG writes raw data to (must be the same bucket created by the GCP Terraform root, see terraform/variables.tf bucket_name)"
+  type        = string
+  default     = "data-lake"
+}
+
+variable "gcp_credentials_file" {
+  description = "Local path to the GCP service account JSON key (the same one used in terraform/keys/), mounted into the Airflow pods to authenticate against GCS and BigQuery. Leave blank to skip mounting credentials (the upload/load tasks fail at runtime until this is set)"
+  type        = string
+  default     = ""
+}
+
+variable "gcp_project_id" {
+  description = "GCP project ID (same project_id as the GCP Terraform root), used by the fhir_ingestion DAG's load_to_bigquery task"
+  type        = string
+  default     = ""
+}
+
+variable "bq_raw_dataset" {
+  description = "BigQuery dataset (landing zone) the raw_encounters table is loaded into. Must be the same dataset created by the bigquery_dataset module in the GCP root"
+  type        = string
+  default     = "raw_data"
 }
 
 variable "airflow_executor" {
-  description = "Executor do Airflow (KubernetesExecutor dispensa Redis/Celery workers, ideal para uso local com kind)"
+  description = "Airflow executor (KubernetesExecutor skips Redis/Celery workers, ideal for local use with kind)"
   type        = string
   default     = "KubernetesExecutor"
 
   validation {
     condition     = contains(["KubernetesExecutor", "CeleryExecutor", "LocalExecutor"], var.airflow_executor)
-    error_message = "airflow_executor deve ser KubernetesExecutor, CeleryExecutor ou LocalExecutor."
+    error_message = "airflow_executor must be KubernetesExecutor, CeleryExecutor, or LocalExecutor."
   }
 }
 
 variable "airflow_webserver_host_port" {
-  description = "Porta no host (localhost) para acessar a UI do Airflow"
+  description = "Host (localhost) port to access the Airflow UI"
   type        = number
   default     = 8080
 }
 
 variable "airflow_webserver_node_port" {
-  description = "NodePort do Service do webserver dentro do cluster kind (deve estar entre 30000-32767)"
+  description = "NodePort of the webserver Service inside the kind cluster (must be between 30000-32767)"
   type        = number
   default     = 30080
 }
 
 variable "admin_username" {
-  description = "Usuário admin criado no Airflow"
+  description = "Admin user created in Airflow"
   type        = string
   default     = "admin"
 }
 
 variable "admin_password" {
-  description = "Senha do usuário admin do Airflow (uso local apenas)"
+  description = "Password for the Airflow admin user (local use only)"
   type        = string
   default     = "admin"
   sensitive   = true
 }
 
 variable "admin_email" {
-  description = "E-mail do usuário admin do Airflow"
+  description = "Email for the Airflow admin user"
   type        = string
   default     = "admin@example.com"
 }
 
 variable "webserver_secret_key" {
-  description = "Secret key do webserver. Deixe em branco para gerar uma automaticamente"
+  description = "Webserver secret key. Leave blank to generate one automatically"
   type        = string
   default     = ""
   sensitive   = true

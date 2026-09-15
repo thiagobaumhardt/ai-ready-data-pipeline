@@ -4,7 +4,7 @@ from BigQuery Vector Search (`ai_embeddings`), and asks an LLM to answer
 using only that retrieved context.
 
 Requires the ingestion/embedding pipeline to have populated `ai_embeddings`
-with the SAME embedding model as EMBEDDING_MODEL below — otherwise cosine
+with the SAME embedding model as EMBEDDING_MODEL below, otherwise cosine
 distances are meaningless. Keep them in sync via `embedding_model_version`.
 """
 import os
@@ -55,18 +55,18 @@ def retrieve_chunks(query_embedding: list[float], top_k: int = 5) -> list[dict]:
 def answer_with_context(question: str, chunks: list[dict]) -> str:
     if not os.environ.get("GOOGLE_API_KEY"):
         return (
-            "GOOGLE_API_KEY não configurado — defina no .env do streamlit_app "
-            "para habilitar a resposta do LLM. Os trechos recuperados estão "
-            "listados abaixo mesmo assim."
+            "GOOGLE_API_KEY not set. Define it in streamlit_app's .env to "
+            "enable the LLM answer. The retrieved chunks are listed below "
+            "regardless."
         )
 
     context = "\n\n".join(f"[{c['source']}] {c['chunk_text']}" for c in chunks)
     llm = ChatGoogleGenerativeAI(model=CHAT_MODEL, temperature=0)
     prompt = (
-        "Responda à pergunta do usuário usando SOMENTE o contexto abaixo, "
-        "extraído de atendimentos hospitalares. Se o contexto não for "
-        "suficiente, diga que não há dados suficientes.\n\n"
-        f"Contexto:\n{context}\n\n"
-        f"Pergunta: {question}"
+        "Answer the user's question using ONLY the context below, drawn "
+        "from hospital encounters. If the context isn't sufficient, say "
+        "there isn't enough data.\n\n"
+        f"Context:\n{context}\n\n"
+        f"Question: {question}"
     )
     return llm.invoke(prompt).content

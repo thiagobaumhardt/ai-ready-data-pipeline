@@ -1,25 +1,25 @@
 output "airflow_webserver_url" {
-  description = "URL da UI do Airflow"
+  description = "URL of the Airflow UI"
   value       = "http://localhost:${var.airflow_webserver_host_port}"
 }
 
 output "admin_username" {
-  description = "Usuário admin do Airflow"
+  description = "Airflow admin user"
   value       = var.admin_username
 }
 
 output "admin_password" {
-  description = "Senha do usuário admin do Airflow"
+  description = "Airflow admin password"
   value       = var.admin_password
   sensitive   = true
 }
 
 output "cluster_name" {
-  description = "Nome do cluster kind criado"
+  description = "Name of the created kind cluster"
   value       = kind_cluster.this.name
 }
 
 output "kubeconfig_path" {
-  description = "Caminho do kubeconfig gerado para o cluster kind"
+  description = "Path to the generated kubeconfig for the kind cluster"
   value       = kind_cluster.this.kubeconfig_path
 }

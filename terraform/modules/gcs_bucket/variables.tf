@@ -1,46 +1,46 @@
 variable "project_id" {
-  description = "ID do projeto GCP onde o bucket será criado"
+  description = "GCP project ID where the bucket will be created"
   type        = string
 }
 
 variable "name" {
-  description = "Nome do bucket (deve ser globalmente único no GCS)"
+  description = "Bucket name (must be globally unique in GCS)"
   type        = string
   default     = "data-lake"
 }
 
 variable "location" {
-  description = "Localização/região do bucket"
+  description = "Bucket location/region"
   type        = string
   default     = "US"
 }
 
 variable "storage_class" {
-  description = "Classe de armazenamento do bucket"
+  description = "Bucket storage class"
   type        = string
   default     = "STANDARD"
 }
 
 variable "force_destroy" {
-  description = "Permite destruir o bucket mesmo que contenha objetos (cuidado em produção)"
+  description = "Allows destroying the bucket even if it still contains objects (careful in production)"
   type        = bool
   default     = false
 }
 
 variable "uniform_bucket_level_access" {
-  description = "Usa controle de acesso uniforme (recomendado pelo Google) em vez de ACLs por objeto"
+  description = "Uses uniform bucket-level access (Google-recommended) instead of per-object ACLs"
   type        = bool
   default     = true
 }
 
 variable "versioning_enabled" {
-  description = "Habilita versionamento de objetos no bucket"
+  description = "Enables object versioning on the bucket"
   type        = bool
   default     = false
 }
 
 variable "labels" {
-  description = "Labels aplicadas ao bucket"
+  description = "Labels applied to the bucket"
   type        = map(string)
   default     = {}
 }

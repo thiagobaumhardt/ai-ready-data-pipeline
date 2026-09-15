@@ -19,6 +19,14 @@ resource "kind_cluster" "this" {
         host_path      = var.dags_host_path
         container_path = var.dags_container_path
       }
+
+      dynamic "extra_mounts" {
+        for_each = var.gcp_credentials_file != "" ? [1] : []
+        content {
+          host_path      = var.gcp_credentials_file
+          container_path = "/opt/airflow/gcp/key.json"
+        }
+      }
     }
   }
 }
@@ -69,6 +77,31 @@ locals {
     readOnly  = false
   }
 
+  gcp_credentials_enabled = var.gcp_credentials_file != ""
+
+  gcp_credentials_volume = local.gcp_credentials_enabled ? [{
+    name = "gcp-credentials"
+    hostPath = {
+      path = "/opt/airflow/gcp/key.json"
+      type = "File"
+    }
+  }] : []
+
+  gcp_credentials_volume_mount = local.gcp_credentials_enabled ? [{
+    name      = "gcp-credentials"
+    mountPath = "/opt/airflow/gcp/key.json"
+    readOnly  = true
+  }] : []
+
+  worker_env = concat(
+    [
+      { name = "GCS_BUCKET_NAME", value = var.gcs_bucket_name },
+      { name = "GCP_PROJECT_ID", value = var.gcp_project_id },
+      { name = "BQ_RAW_DATASET", value = var.bq_raw_dataset },
+    ],
+    local.gcp_credentials_enabled ? [{ name = "GOOGLE_APPLICATION_CREDENTIALS", value = "/opt/airflow/gcp/key.json" }] : []
+  )
+
   airflow_values = {
     executor           = var.airflow_executor
     webserverSecretKey = local.webserver_secret_key
@@ -104,8 +137,9 @@ locals {
     }
 
     workers = {
-      extraVolumes      = [local.dags_volume]
-      extraVolumeMounts = [local.dags_volume_mount]
+      extraVolumes      = concat([local.dags_volume], local.gcp_credentials_volume)
+      extraVolumeMounts = concat([local.dags_volume_mount], local.gcp_credentials_volume_mount)
+      env               = local.worker_env
     }
 
     triggerer = {

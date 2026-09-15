@@ -1,14 +1,14 @@
 output "name" {
-  description = "Nome do bucket criado"
+  description = "Name of the created bucket"
   value       = google_storage_bucket.this.name
 }
 
 output "url" {
-  description = "URL gs:// do bucket"
+  description = "gs:// URL of the bucket"
   value       = google_storage_bucket.this.url
 }
 
 output "self_link" {
-  description = "Self link do bucket na API do GCP"
+  description = "Self link of the bucket in the GCP API"
   value       = google_storage_bucket.this.self_link
 }

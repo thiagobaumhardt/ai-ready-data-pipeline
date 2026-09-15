@@ -1,14 +1,14 @@
 output "project_id" {
-  description = "ID do projeto GCP autenticado"
+  description = "Authenticated GCP project ID"
   value       = var.project_id
 }
 
 output "region" {
-  description = "Região padrão do GCP"
+  description = "Default GCP region"
   value       = var.region
 }
 
 output "credentials_file" {
-  description = "Caminho do arquivo de credenciais validado"
+  description = "Path to the validated credentials file"
   value       = var.credentials_file
 }

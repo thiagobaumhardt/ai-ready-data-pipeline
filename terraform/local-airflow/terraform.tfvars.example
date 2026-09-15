@@ -1,5 +1,5 @@
 cluster_name                = "airflow-local"
-dags_host_path              = "./dags"
+dags_host_path              = "../../airflow/dags"
 airflow_namespace           = "airflow"
 airflow_executor            = "KubernetesExecutor"
 airflow_webserver_host_port = 8080
@@ -7,3 +7,17 @@ airflow_webserver_node_port = 30080
 admin_username               = "admin"
 admin_password               = "admin"
 admin_email                  = "admin@example.com"
+
+# GCS bucket the fhir_ingestion DAG writes raw data to.
+# Must be the same bucket created by the GCP Terraform root (../variables.tf bucket_name).
+gcs_bucket_name = "data-lake"
+
+# GCP project ID (same as the GCP Terraform root's project_id), and the
+# BigQuery landing-zone dataset the load_to_bigquery task writes to.
+gcp_project_id = "your-gcp-project-id"
+bq_raw_dataset = "raw_data"
+
+# Local path to the same service account key used in terraform/keys/.
+# Without this, the "encounters" and "load_to_bigquery" tasks run but fail
+# when they try to reach GCS/BigQuery.
+gcp_credentials_file = "../keys/your-service-account-key.json"
