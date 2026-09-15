@@ -1,0 +1,251 @@
+PROJECT: AI-READY DATA PIPELINE
+=================================
+
+------------------------------------------------
+PITCH (for README and interviews)
+------------------------------------------------
+Companies want to ship AI products fast, but the data feeding those
+products often lacks reliable freshness, clear semantic meaning, and
+proper governance — leading to wrong decisions, duplicated work, and
+regulatory risk. This pipeline solves that by automating the three
+missing layers: semantic metadata, versioned embeddings, and freshness
+SLAs, with sensitive-data governance built in from ingestion.
+
+------------------------------------------------
+BUSINESS PROBLEM IT SOLVES
+------------------------------------------------
+1. Decisions based on stale data
+   - An AI agent answers without knowing if the data is current
+   - Business teams make wrong calls trusting an answer that looked fresh
+   - No one can confidently say when the data the AI used was last updated
+
+2. Data with no explicit business meaning
+   - An agent generates wrong SQL because it doesn't understand what a
+     column really represents
+   - Data scientists lose hours asking the business team what a table means
+   - There's no single semantic source of truth
+
+3. Rework and slow AI product delivery
+   - Every new AI use case reinvents chunking/embedding/validation from
+     scratch
+   - The AI team spends more time cleaning data than building the product
+   - This gap becomes a bottleneck — AI product ideas take months to ship
+     because the data isn't ready
+
+4. Sensitive data exposure without governance
+   - Health or financial data can leak into an LLM prompt with no control
+   - Auditing can't answer "what patient data was exposed to which agent"
+   - Real regulatory risk in sectors like healthcare and finance
+
+------------------------------------------------
+ARCHITECTURE (FLOW)
+------------------------------------------------
+Data source (public API or reuse of the aviation pipeline)
+        |
+        v
+   [Airflow DAG - ingestion]
+        |
+        v
+   GCS (raw) -> BigQuery (staging)
+        |
+        v
+   [dbt Core] -> models raw -> staging -> mart + schema/quality tests
+        |
+        v
+   [PySpark via Dataproc Serverless] -> heavy text chunking at volume
+        |
+        v
+   [LLM API: Gemini/Claude + LangChain] -> generates:
+        - semantic descriptions of tables/columns (catalog)
+        - chunk embeddings
+        - anomaly classification (schema drift, outliers)
+        |
+        v
+   BigQuery Vector Search -> stores versioned embeddings
+        |
+        v
+   Contract layer: Pydantic validates the schema exposed for AI consumption
+        |
+        v
+   Governance layer: masking/anonymization before any prompt + audit log
+        |
+        v
+   Metabase -> "AI-readiness score" dashboard per table
+
+------------------------------------------------
+TECH STACK
+------------------------------------------------
+Layer                    | Technology                                | Role
+--------------------------|--------------------------------------------|---------------------------------------------------------------
+Orchestration             | Apache Airflow (GKE or Docker Compose)    | Orchestrates ingestion -> transformation -> validation -> embedding -> catalog
+Data modeling             | dbt Core                                   | Models raw -> staging -> mart layers in BigQuery; runs schema/quality tests
+Language                  | Python 3.11+ (TaskFlow API)                | Custom Airflow operators, API calls, agent logic, Pydantic validation
+Distributed processing    | PySpark via Dataproc Serverless           | Heavy text chunking at volume
+LLM / AI                  | Gemini API or Claude API                   | Semantic descriptions, anomaly classification, embedding generation
+Vector database           | BigQuery Vector Search                    | Stores versioned embeddings, native to GCP
+LLM orchestration         | LangChain                                  | Prompt templates, output parsing, chunking/embedding logic
+Warehouse                 | BigQuery                                   | Processed data warehouse
+Storage                   | GCS                                        | Raw/staging storage layer
+Data contracts            | Pydantic                                   | Validates schema exposed for AI consumption
+Data quality               | dbt tests                                 | Nulls, duplicates, freshness
+Catalog                   | Custom BigQuery table (MVP) -> OpenMetadata (future) | Semantic metadata catalog
+Dashboard                 | Metabase                                   | AI-readiness score dashboard per table
+IaC                       | Terraform                                  | Provisions GCS, BigQuery, GKE, Dataproc
+CI/CD                     | GitHub Actions                             | Automated tests, DAG deployment
+Containerization           | Docker + GKE                               | Packaging and execution
+
+------------------------------------------------
+BIGQUERY TABLES
+------------------------------------------------
+
+Dataset: raw_data
+  - raw_*
+    Content: raw data, exactly as received from the source
+    AI-ready? No — this is just the landing zone
+
+Dataset: analytics
+  - stg_* / fct_* / dim_*
+    Content: clean, typed data, passing dbt tests
+    AI-ready? Partial — quality is fine, but no semantic metadata yet
+
+Dataset: ai_metadata
+  - ai_catalog
+    Content: table_name, column_name, semantic_description (LLM-generated),
+    business_type, sensitivity (PII/not), generated_at
+    AI-ready? Yes — gives semantic meaning for an agent to consult before
+    generating SQL
+
+  - ai_embeddings
+    Content: chunk_id, chunk_text, embedding (VECTOR), source, timestamp,
+    embedding_model_version, confidence
+    AI-ready? Yes — queried via BigQuery Vector Search by the RAG/agent
+
+  - ai_freshness_sla
+    Content: table_name, last_updated, expected_sla, status (fresh/stale),
+    snapshot_id
+    AI-ready? Yes — the agent checks this before trusting an answer
+
+  - ai_readiness_scorecard
+    Content: table_name, ai_readiness_score (0-100), has_metadata,
+    has_contract, is_fresh, pii_handled
+    AI-ready? This is the consolidated summary — feeds the Metabase dashboard
+
+Consumption flow for an agent/RAG:
+  1. Query ai_catalog (understand the schema in business language)
+  2. Query ai_freshness_sla (confirm the data isn't stale)
+  3. Query ai_embeddings via BigQuery Vector Search (semantic search)
+  4. Assemble the final answer
+
+------------------------------------------------
+"AI-READINESS" LAYERS IMPLEMENTED
+------------------------------------------------
+1. Structure for embeddings and vector search
+   - Consistent, versioned chunking
+   - Per-chunk metadata: source, timestamp, author, confidence
+   - Re-embedding pipeline when the embedding model version changes
+
+2. Semantic layer and metadata
+   - Catalog with LLM-generated semantic descriptions
+   - Data contracts (schema validated by Pydantic)
+   - Clear data lineage
+
+3. Freshness and versioning
+   - Explicit freshness SLA per table
+   - Stale-data flagging
+   - Dataset versioning (snapshot) for reproducibility
+
+4. Governance and privacy for AI
+   - Automatic masking/anonymization before any prompt
+   - Row-level security respected even when an agent queries the data
+   - Audit log of what data was exposed to which agent/prompt
+
+(Feature store / train-serving consistency is out of scope for the MVP —
+it's the heaviest layer and least essential to the main pitch)
+
+------------------------------------------------
+CONFIRMED COMPONENTS CHECKLIST
+------------------------------------------------
+[x] LLM — Gemini/Claude API generates semantic descriptions (ai_catalog)
+    and classifies anomalies; calls organized via LangChain
+[x] Vector Database — BigQuery Vector Search stores embeddings
+    (ai_embeddings), native to GCP
+[x] Test/Quality — dbt tests + Pydantic (schema contract) before
+    exposing data for AI consumption
+[x] AI-Ready (final result) — ai_catalog + ai_freshness_sla +
+    ai_embeddings + ai_readiness_scorecard, with PII governance applied
+    before any prompt
+
+------------------------------------------------
+SUGGESTED BUILD ORDER (MVP -> FULL)
+------------------------------------------------
+1. Simple ingestion (Airflow + GCS + BigQuery) with one real source
+2. dbt: raw -> staging -> mart modeling + basic tests
+3. Python task calling an LLM to generate semantic descriptions for
+   each table/column -> written to ai_catalog
+4. Chunking task (plain Python first; Spark only if volume justifies it)
+   + embeddings via LangChain -> BigQuery Vector Search
+5. Pydantic contract validating schema before exposing the data
+6. Freshness/staleness task flagging each table
+7. Basic masking layer (simple PII rules before any prompt)
+8. Metabase dashboard with AI-readiness score
+9. Terraform + CI/CD last, so infra doesn't block the MVP
+
+------------------------------------------------
+PROPOSED REPOSITORY STRUCTURE
+------------------------------------------------
+ai-ready-data-pipeline/
+├── dags/
+│   ├── ingestion_dag.py
+│   ├── catalog_enrichment_dag.py
+│   ├── embedding_pipeline_dag.py
+│   └── freshness_check_dag.py
+├── dbt/
+│   ├── models/staging/
+│   ├── models/marts/
+│   └── tests/
+├── spark_jobs/
+│   └── chunking_job.py
+├── contracts/
+│   └── schemas.py  (Pydantic)
+├── governance/
+│   └── masking_rules.py
+├── terraform/
+│   └── main.tf
+├── dashboards/
+│   └── metabase_config/
+├── .github/workflows/
+├── README.md
+└── docker-compose.yml
+
+------------------------------------------------
+HONEST ASSESSMENT AS A PORTFOLIO PROJECT
+------------------------------------------------
+Strengths:
+- Tackles a real, named pain point ("AI-ready data"), trending in 2026
+  hiring
+- Combines an already-mastered stack (Airflow, dbt, GCP, Python,
+  Terraform) with two new AI pieces (LLM API, vector search) without
+  becoming just "an LLM wrapper"
+- Tells a complete story: ingestion -> quality -> semantics ->
+  governance -> dashboard
+
+Risks to manage:
+1. "Cataloging data with semantic metadata" already exists as a product
+   category (Atlan, OpenMetadata, DataHub, Monte Carlo).
+   Mitigation: make it explicit in the README that the goal is to
+   demonstrate deep understanding of the problem, not compete with
+   those tools.
+2. Large scope (6+ components) risks being shallow everywhere.
+   Mitigation: follow the MVP -> full build order, and prefer finishing
+   fewer steps well over doing all of them halfway.
+3. Best fit is hybrid Data Platform Engineer / Analytics Engineer roles
+   with an AI component — may be a weaker fit for pure ML Engineer roles
+   (no fine-tuning/model evaluation) or fully traditional Data Engineer
+   roles.
+
+Conclusion: not a guaranteed "number one" project on its own — no single
+project guarantees that. It's a strong project (top 2-3) when combined
+with full execution, a well-written README, and progression alongside
+the other two portfolio projects (aviation pipeline + RAG pipeline).
+
+

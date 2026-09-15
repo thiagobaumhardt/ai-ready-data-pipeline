@@ -1,0 +1,5 @@
+project_id       = "your-gcp-project-id"
+region           = "us-central1"
+credentials_file = "./keys/your-service-account-key.json"
+bucket_name      = "data-lake"
+bucket_location  = "US"

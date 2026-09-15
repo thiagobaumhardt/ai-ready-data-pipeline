@@ -1,0 +1,9 @@
+cluster_name                = "airflow-local"
+dags_host_path              = "./dags"
+airflow_namespace           = "airflow"
+airflow_executor            = "KubernetesExecutor"
+airflow_webserver_host_port = 8080
+airflow_webserver_node_port = 30080
+admin_username               = "admin"
+admin_password               = "admin"
+admin_email                  = "admin@example.com"
