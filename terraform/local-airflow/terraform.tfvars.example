@@ -12,10 +12,9 @@ admin_email                  = "admin@example.com"
 # Must be the same bucket created by the GCP Terraform root (../variables.tf bucket_name).
 gcs_bucket_name = "data-lake"
 
-# GCP project ID (same as the GCP Terraform root's project_id), and the
-# BigQuery landing-zone dataset the load_to_bigquery task writes to.
+# GCP project ID (same as the GCP Terraform root's project_id). Per-table
+# dataset and write_disposition live in airflow/dags/config/tables.yml.
 gcp_project_id = "your-gcp-project-id"
-bq_raw_dataset = "raw_data"
 
 # Local path to the same service account key used in terraform/keys/.
 # Without this, the "encounters" and "load_to_bigquery" tasks run but fail

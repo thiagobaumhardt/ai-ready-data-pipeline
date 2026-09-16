@@ -93,11 +93,13 @@ locals {
     readOnly  = true
   }] : []
 
+  # Dataset per table lives in airflow/dags/config/tables.yml, not here -
+  # that's the single source of truth for where each table lands and its
+  # write_disposition (append/truncate).
   worker_env = concat(
     [
       { name = "GCS_BUCKET_NAME", value = var.gcs_bucket_name },
       { name = "GCP_PROJECT_ID", value = var.gcp_project_id },
-      { name = "BQ_RAW_DATASET", value = var.bq_raw_dataset },
     ],
     local.gcp_credentials_enabled ? [{ name = "GOOGLE_APPLICATION_CREDENTIALS", value = "/opt/airflow/gcp/key.json" }] : []
   )
@@ -106,7 +108,22 @@ locals {
     executor           = var.airflow_executor
     webserverSecretKey = local.webserver_secret_key
 
+    # Airflow 3's chart serves the UI/API from the "apiServer" component, not
+    # "webserver" (that's Airflow 2 naming, kept only for defaultUser, which
+    # the createUserJob template still reads from webserver.defaultUser).
     webserver = {
+      defaultUser = {
+        enabled   = true
+        username  = var.admin_username
+        password  = var.admin_password
+        firstName = "Admin"
+        lastName  = "User"
+        email     = var.admin_email
+        role      = "Admin"
+      }
+    }
+
+    apiServer = {
       service = {
         type = "NodePort"
         ports = [
@@ -118,20 +135,25 @@ locals {
           }
         ]
       }
-      defaultUser = {
-        enabled   = true
-        username  = var.admin_username
-        password  = var.admin_password
-        firstName = "Admin"
-        lastName  = "User"
-        email     = var.admin_email
-        role      = "Admin"
+      extraVolumes      = [local.dags_volume]
+      extraVolumeMounts = [local.dags_volume_mount]
+      # Default failureThreshold (6) x periodSeconds (10) = 60s is too tight
+      # for a local kind cluster on modest hardware; the api-server can take
+      # longer than that to bind on first boot and gets stuck restarting.
+      startupProbe = {
+        failureThreshold = 30
       }
+    }
+
+    scheduler = {
       extraVolumes      = [local.dags_volume]
       extraVolumeMounts = [local.dags_volume_mount]
     }
 
-    scheduler = {
+    # Airflow 3 splits DAG parsing out of the scheduler into its own
+    # dagProcessor component/pod - it needs the DAGs mount too, otherwise
+    # it parses an empty folder and no DAGs ever show up in the UI.
+    dagProcessor = {
       extraVolumes      = [local.dags_volume]
       extraVolumeMounts = [local.dags_volume_mount]
     }
@@ -173,9 +195,16 @@ resource "helm_release" "airflow" {
   version    = var.airflow_chart_version
   namespace  = kubernetes_namespace.airflow.metadata[0].name
 
-  timeout       = 900
-  wait          = true
-  wait_for_jobs = true
+  # wait=false is intentional: the chart runs DB migrations as a
+  # post-install Helm hook, and the main pods (scheduler, webserver, ...)
+  # block in an init container until migrations are done. With wait=true,
+  # Helm waits for those main pods to become ready BEFORE running the
+  # post-install hook - a deadlock. With wait=false, Helm still runs the
+  # hook synchronously (and this resource still waits for that), it just
+  # doesn't also block on the main pods' readiness; they converge shortly
+  # after, once the migration hook completes.
+  timeout = 900
+  wait    = false
 
   values = [yamlencode(local.airflow_values)]
 }

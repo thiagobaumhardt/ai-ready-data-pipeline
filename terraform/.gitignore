@@ -6,3 +6,6 @@ keys/
 *.tfstate.*
 *.tfvars
 crash.log
+
+# kind_cluster-generated kubeconfig (local-airflow)
+local-airflow/*-config

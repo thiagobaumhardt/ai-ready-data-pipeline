@@ -1,0 +1,10 @@
+# Registry of tables the ingestion DAGs load into BigQuery.
+#
+# write_disposition:
+#   append    - keep history, each run adds new rows (default for most raw tables)
+#   truncate  - replace the table's contents on every run (for full-snapshot sources)
+tables:
+  - name: raw_encounters
+    resource: encounters
+    dataset: raw_data
+    write_disposition: append

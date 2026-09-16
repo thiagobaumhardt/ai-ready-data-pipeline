@@ -52,12 +52,6 @@ variable "gcp_project_id" {
   default     = ""
 }
 
-variable "bq_raw_dataset" {
-  description = "BigQuery dataset (landing zone) the raw_encounters table is loaded into. Must be the same dataset created by the bigquery_dataset module in the GCP root"
-  type        = string
-  default     = "raw_data"
-}
-
 variable "airflow_executor" {
   description = "Airflow executor (KubernetesExecutor skips Redis/Celery workers, ideal for local use with kind)"
   type        = string
