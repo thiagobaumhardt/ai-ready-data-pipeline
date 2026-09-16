@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: stg_encounters
+    description: Typed encounters, one row each, straight from raw_data.raw_encounters with no business logic applied yet.
+    columns:
+      - name: encounter_id
+        tests:
+          - unique
+          - not_null
+      - name: encounter_class
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["inpatient", "emergency"]
+      - name: icd10_code
+        tests:
+          - not_null
+      - name: encounter_datetime
+        tests:
+          - not_null

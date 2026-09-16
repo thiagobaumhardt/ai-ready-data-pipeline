@@ -57,6 +57,20 @@ module "raw_data_dataset" {
   depends_on = [module.auth]
 }
 
+module "analytics_dataset" {
+  source = "./modules/bigquery_dataset"
+  providers = {
+    google = google.iam_admin
+  }
+
+  project_id  = module.auth.project_id
+  dataset_id  = "analytics"
+  location    = var.bucket_location
+  description = "dbt output: stg_*/fct_*/dim_* models built from raw_data. Clean and typed, no semantic metadata yet."
+
+  depends_on = [module.auth]
+}
+
 locals {
   # Same service account Airflow's fhir_ingestion DAG authenticates with
   # (terraform/keys/*.json), so it can run BigQuery load jobs into raw_data.
@@ -83,6 +97,18 @@ resource "google_bigquery_dataset_iam_member" "ingestion_raw_data_editor" {
 
   project    = module.auth.project_id
   dataset_id = module.raw_data_dataset.dataset_id
+  role       = "roles/bigquery.dataEditor"
+  member     = "serviceAccount:${local.ingestion_service_account_email}"
+}
+
+# dbt runs as this same service account (see dbt/profiles.yml.example) and
+# needs to create/replace tables in analytics - same reasoning as raw_data
+# above, granted on this one dataset only.
+resource "google_bigquery_dataset_iam_member" "ingestion_analytics_editor" {
+  provider = google.iam_admin
+
+  project    = module.auth.project_id
+  dataset_id = module.analytics_dataset.dataset_id
   role       = "roles/bigquery.dataEditor"
   member     = "serviceAccount:${local.ingestion_service_account_email}"
 }

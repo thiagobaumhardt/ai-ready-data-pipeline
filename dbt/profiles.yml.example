@@ -1,0 +1,16 @@
+# Copy this to ~/.dbt/profiles.yml (or keep it here and run dbt with
+# --profiles-dir .) and fill in your own project_id. Uses the same service
+# account key as the rest of the pipeline (terraform/keys/), which already
+# has bigquery.dataEditor on analytics and bigquery.jobUser on the project
+# (see terraform/main.tf).
+ai_ready_data_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      project: your-gcp-project-id
+      dataset: analytics
+      keyfile: ../terraform/keys/your-service-account-key.json
+      location: US
+      threads: 4

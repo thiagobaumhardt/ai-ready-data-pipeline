@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: raw_data
+    schema: raw_data
+    tables:
+      - name: raw_encounters
+        description: >
+          Raw FHIR encounter records, exactly as landed by the fhir Airflow
+          DAG (GCS -> BigQuery load job). No typing or cleanup applied.
+        config:
+          loaded_at_field: encounter_datetime
+          freshness:
+            warn_after: { count: 24, period: hour }
+            error_after: { count: 48, period: hour }

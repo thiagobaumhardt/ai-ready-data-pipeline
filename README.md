@@ -176,11 +176,16 @@ cd local-airflow
 cp terraform.tfvars.example terraform.tfvars   # set gcs_bucket_name, gcp_project_id, gcp_credentials_file
 terraform init && terraform apply
 # UI: http://localhost:8080  |  terraform output admin_username / -raw admin_password
-# trigger the fhir_ingestion DAG: lands data in GCS, then loads it into BigQuery
+# trigger the fhir DAG: lands data in GCS, then loads it into raw_data.raw_encounters
 cd ../..
 
-# 5. dbt (once models exist)
-cd dbt && dbt deps && dbt build && cd ..
+# 5. dbt (staging -> mart, once the fhir DAG has run at least once)
+cd dbt
+python -m venv .venv && source .venv/Scripts/activate   # macOS/Linux: source .venv/bin/activate
+pip install -r requirements.txt
+cp profiles.yml.example profiles.yml   # fill in project, keyfile
+dbt build --profiles-dir .
+cd ..
 
 # 6. Streamlit app
 cd streamlit_app
@@ -208,14 +213,19 @@ Notes:
 ai_dataengineering/
 ├── setup.sh                  # one-command bootstrap: terraform (GCP) -> terraform (Airflow) -> dbt
 ├── airflow/                  # Airflow pipeline code (not infra)
-│   └── dags/                 #  fhir_ingestion.py: simulated FHIR Encounter -> raw GCS -> BigQuery
-├── dbt/                      # dbt Core project: staging → mart models + tests
+│   └── dags/
+│       ├── fhir_ingestion.py  #  "fhir" DAG: encounters task group -> raw GCS -> BigQuery
+│       └── config/tables.yml  #  table registry: dataset + write_disposition per table
+├── dbt/                      # dbt Core project: staging -> mart models + tests
+│   └── models/
+│       ├── staging/           #  stg_encounters (typed, no business logic)
+│       └── marts/             #  fct_encounters (cardiology split lives here)
 ├── terraform/                 # IaC only
 │   ├── keys/                 #  GCP service account key (gitignored)
 │   ├── modules/
 │   │   ├── auth/               #  validates credentials, feeds the google provider
 │   │   ├── gcs_bucket/         #  provisions the data-lake GCS bucket
-│   │   └── bigquery_dataset/   #  provisions the raw_data landing-zone dataset
+│   │   └── bigquery_dataset/   #  provisions a BigQuery dataset (raw_data, analytics)
 │   └── local-airflow/        #  Airflow 3 running on a local kind cluster
 │       └── main.tf           #    kind_cluster + helm_release (apache-airflow/airflow chart),
 │                              #    mounts ../../airflow/dags into the cluster
@@ -233,27 +243,29 @@ ai_dataengineering/
 
 - [x] Terraform: `auth` module (GCP service-account authentication),
       `gcs_bucket` module (provisions the `data-lake` bucket), and
-      `bigquery_dataset` module (provisions the `raw_data` landing zone)
+      `bigquery_dataset` module (provisions `raw_data` and `analytics`)
 - [x] Airflow 3 running on a local `kind` cluster (Terraform + Helm chart),
       `KubernetesExecutor`. Every task runs as its own isolated pod,
       mirroring how it'd run on GKE in production
-- [x] `fhir_ingestion` DAG: simulates a FHIR API `Encounter` call (inpatient
-      + emergency encounters, ICD-10-CM codes across several specialties,
-      no filtering at ingestion time), lands the raw records as
-      newline-delimited JSON in GCS (`raw/fhir_encounters/dt=.../`), then
-      loads them into `raw_data.raw_encounters` in BigQuery
+- [x] `fhir` DAG, `encounters` task group: simulates a FHIR API `Encounter`
+      call (inpatient + emergency, ICD-10-CM codes across several
+      specialties, no filtering at ingestion time), lands the raw records
+      as newline-delimited JSON in GCS, then loads them into
+      `raw_data.raw_encounters` in BigQuery. Table registry (dataset,
+      write_disposition) lives in `airflow/dags/config/tables.yml`
 - [x] IAM for the ingestion service account scoped to exactly what it uses
-      (`storage.admin`, dataset-level `bigquery.dataEditor`, project-level
-      `bigquery.jobUser`), with the project-level grant applied via a
-      human/admin identity, not the service account itself
+      (bucket-level `storage.objectAdmin`, dataset-level
+      `bigquery.dataEditor` on `raw_data` and `analytics`, project-level
+      `bigquery.jobUser`), with every grant applied via a human/admin
+      identity, not the service account itself
+- [x] dbt: `stg_encounters` (typed) → `fct_encounters` (cardiology split
+      via `icd10_code`), with schema tests (`unique`, `not_null`,
+      `accepted_values`) and a source freshness check on `raw_encounters`
 - [x] One-command bootstrap (`setup.sh`): Terraform apply (GCP) → Terraform
       apply (Airflow on kind) → dbt deps
 - [x] Streamlit app: AI-readiness scorecard page + RAG chat page (both fail
       gracefully with setup instructions until the pipeline populates
       `ai_metadata`)
-- [ ] dbt models (raw → staging → mart) for healthcare encounters,
-      including the cardiology split (by `icd10_code`) now that data lands
-      in BigQuery
 - [ ] LLM-generated semantic catalog (`ai_catalog`)
 - [ ] Chunking + embeddings pipeline (`ai_embeddings`)
 - [ ] Pydantic data contracts

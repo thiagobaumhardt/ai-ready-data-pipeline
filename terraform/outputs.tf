@@ -12,3 +12,8 @@ output "raw_data_dataset_id" {
   description = "ID of the raw_data landing zone BigQuery dataset"
   value       = module.raw_data_dataset.dataset_id
 }
+
+output "analytics_dataset_id" {
+  description = "ID of the analytics BigQuery dataset (dbt output)"
+  value       = module.analytics_dataset.dataset_id
+}

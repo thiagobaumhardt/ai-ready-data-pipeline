@@ -1,9 +1,3 @@
-# Airflow
-airflow/logs/*
-!airflow/logs/.gitkeep
-airflow/.env
-airflow/kube/config
-
 # Terraform (secrets/state) — terraform/.gitignore also covers this locally
 terraform/.terraform/
 terraform/*.tfstate
@@ -15,6 +9,8 @@ terraform/keys/
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
+dbt/profiles.yml
+dbt/.user.yml
 
 # Python
 __pycache__/
