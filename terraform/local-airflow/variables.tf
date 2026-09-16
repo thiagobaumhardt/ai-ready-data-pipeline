@@ -4,16 +4,40 @@ variable "cluster_name" {
   default     = "airflow-local"
 }
 
-variable "dags_host_path" {
-  description = "Local (host) path with the DAGs, mounted into the kind node. Deliberately outside the terraform tree: DAGs are pipeline code, not infra"
+variable "dags_repo_url" {
+  description = "Git URL Airflow's git-sync sidecar clones DAGs (and the ingestion package) from. Public repo, so no credentials needed"
   type        = string
-  default     = "../../airflow/dags"
+  default     = "https://github.com/thiagobaumhardt/ai-ready-data-pipeline.git"
 }
 
-variable "dags_container_path" {
-  description = "Path inside the kind node where host_path is mounted (and then exposed to pods via a hostPath volume)"
+variable "dags_repo_branch" {
+  description = "Branch git-sync tracks"
   type        = string
-  default     = "/opt/airflow/dags"
+  default     = "main"
+}
+
+variable "dags_repo_sync_period" {
+  description = "How often git-sync checks the repo for new commits (Go duration string, e.g. \"60s\")"
+  type        = string
+  default     = "60s"
+}
+
+variable "dags_repo_mount_path" {
+  description = "Where the synced repo lands in every Airflow pod. We sync the whole repo, not just airflow/dags, so the ingestion package stays at the same commit as the DAGs that import it"
+  type        = string
+  default     = "/opt/airflow/repo"
+}
+
+variable "dbt_host_path" {
+  description = "Local (host) path with the dbt project, mounted into the kind node so the \"dbt\" DAG's KubernetesPodOperator can mount it into its own pod"
+  type        = string
+  default     = "../../dbt"
+}
+
+variable "dbt_container_path" {
+  description = "Path inside the kind node where dbt_host_path is mounted. Must match DBT_PROJECT_PATH in airflow/dags/dbt_pipeline.py"
+  type        = string
+  default     = "/opt/dbt"
 }
 
 variable "airflow_namespace" {

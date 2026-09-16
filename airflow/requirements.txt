@@ -1,0 +1,8 @@
+# Not installed at deploy time: the apache/airflow:3.1.7 image used by
+# terraform/local-airflow already bundles all of these (see its "google"
+# and "cncf-kubernetes" extras). This file exists so the DAGs' actual
+# dependencies are documented, and so you can pip install them locally to
+# import-test airflow/dags/*.py without a live cluster.
+apache-airflow==3.1.7
+apache-airflow-providers-google==19.5.0
+apache-airflow-providers-cncf-kubernetes==10.12.3

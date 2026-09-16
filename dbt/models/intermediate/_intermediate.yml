@@ -1,0 +1,13 @@
+version: 2
+
+models:
+  - name: int_encounters_classified
+    description: stg_encounters plus is_cardiology, derived from icd10_code (ICD-10 chapter IX, codes starting with "I"). Not consumption-ready yet, that's what fct_encounters is for.
+    columns:
+      - name: encounter_id
+        tests:
+          - unique
+          - not_null
+      - name: is_cardiology
+        tests:
+          - not_null

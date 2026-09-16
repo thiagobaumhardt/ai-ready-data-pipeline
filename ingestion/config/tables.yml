@@ -1,4 +1,4 @@
-# Registry of tables the ingestion DAGs load into BigQuery.
+# Registry of tables ingestion jobs load into BigQuery.
 #
 # write_disposition:
 #   append    - keep history, each run adds new rows (default for most raw tables)

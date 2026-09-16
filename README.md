@@ -179,11 +179,14 @@ terraform init && terraform apply
 # trigger the fhir DAG: lands data in GCS, then loads it into raw_data.raw_encounters
 cd ../..
 
-# 5. dbt (staging -> mart, once the fhir DAG has run at least once)
+# 5. dbt (staging -> intermediate -> mart, once the fhir DAG has run at least once)
+#    Runs on its own daily at 7am via the "dbt" Airflow DAG (KubernetesPodOperator,
+#    official dbt-bigquery image). To run it by hand instead:
 cd dbt
 python -m venv .venv && source .venv/Scripts/activate   # macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-cp profiles.yml.example profiles.yml   # fill in project, keyfile
+export GCP_PROJECT_ID=your-gcp-project-id
+export GOOGLE_APPLICATION_CREDENTIALS=../terraform/keys/your-service-account-key.json
 dbt build --profiles-dir .
 cd ..
 
@@ -212,14 +215,18 @@ Notes:
 ```
 ai_dataengineering/
 ├── setup.sh                  # one-command bootstrap: terraform (GCP) -> terraform (Airflow) -> dbt
-├── airflow/                  # Airflow pipeline code (not infra)
+├── airflow/                  # Orchestration only (not infra, no business logic)
 │   └── dags/
 │       ├── fhir_ingestion.py  #  "fhir" DAG: encounters task group -> raw GCS -> BigQuery
-│       └── config/tables.yml  #  table registry: dataset + write_disposition per table
-├── dbt/                      # dbt Core project: staging -> mart models + tests
+│       └── dbt_pipeline.py    #  "dbt" DAG: runs dbt build daily at 7am
+├── ingestion/                  # Orchestrator-agnostic ingestion code (zero Airflow imports)
+│   ├── fhir/encounters.py      #  what to extract and how to shape it
+│   └── config/tables.yml       #  table registry: dataset + write_disposition per table
+├── dbt/                       # dbt Core project: staging -> intermediate -> mart + tests
 │   └── models/
-│       ├── staging/           #  stg_encounters (typed, no business logic)
-│       └── marts/             #  fct_encounters (cardiology split lives here)
+│       ├── staging/            #  stg_encounters (typed, no business logic)
+│       ├── intermediate/       #  int_encounters_classified (cardiology split lives here)
+│       └── marts/               #  fct_encounters (consumption-ready)
 ├── terraform/                 # IaC only
 │   ├── keys/                 #  GCP service account key (gitignored)
 │   ├── modules/
@@ -228,7 +235,7 @@ ai_dataengineering/
 │   │   └── bigquery_dataset/   #  provisions a BigQuery dataset (raw_data, analytics)
 │   └── local-airflow/        #  Airflow 3 running on a local kind cluster
 │       └── main.tf           #    kind_cluster + helm_release (apache-airflow/airflow chart),
-│                              #    mounts ../../airflow/dags into the cluster
+│                              #    mounts dags/, ingestion/ and dbt/ into the cluster
 ├── spark_jobs/                # PySpark chunking jobs (Dataproc Serverless)
 ├── contracts/                  # Pydantic schemas exposed for AI consumption
 ├── governance/                 # PHI masking/anonymization rules
@@ -250,16 +257,22 @@ ai_dataengineering/
 - [x] `fhir` DAG, `encounters` task group: simulates a FHIR API `Encounter`
       call (inpatient + emergency, ICD-10-CM codes across several
       specialties, no filtering at ingestion time), lands the raw records
-      as newline-delimited JSON in GCS, then loads them into
-      `raw_data.raw_encounters` in BigQuery. Table registry (dataset,
-      write_disposition) lives in `airflow/dags/config/tables.yml`
+      as newline-delimited JSON in GCS via `GCSHook`, then loads them into
+      `raw_data.raw_encounters` in BigQuery via `GCSToBigQueryOperator`.
+      Orchestration (`airflow/dags/`) is fully decoupled from the
+      ingestion logic (`ingestion/`, zero Airflow imports, table registry
+      in `ingestion/config/tables.yml`) - swapping orchestrators later
+      wouldn't touch the ingestion code
+- [x] `dbt` DAG: runs `dbt build` daily at 7am via `KubernetesPodOperator`,
+      in the official `dbt-bigquery` image rather than the Airflow image
 - [x] IAM for the ingestion service account scoped to exactly what it uses
       (bucket-level `storage.objectAdmin`, dataset-level
       `bigquery.dataEditor` on `raw_data` and `analytics`, project-level
       `bigquery.jobUser`), with every grant applied via a human/admin
       identity, not the service account itself
-- [x] dbt: `stg_encounters` (typed) → `fct_encounters` (cardiology split
-      via `icd10_code`), with schema tests (`unique`, `not_null`,
+- [x] dbt: `stg_encounters` (typed) → `int_encounters_classified`
+      (cardiology split via `icd10_code`) → `fct_encounters`
+      (consumption-ready), with schema tests (`unique`, `not_null`,
       `accepted_values`) and a source freshness check on `raw_encounters`
 - [x] One-command bootstrap (`setup.sh`): Terraform apply (GCP) → Terraform
       apply (Airflow on kind) → dbt deps

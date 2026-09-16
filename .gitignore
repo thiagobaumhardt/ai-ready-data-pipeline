@@ -9,7 +9,6 @@ terraform/keys/
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
-dbt/profiles.yml
 dbt/.user.yml
 
 # Python

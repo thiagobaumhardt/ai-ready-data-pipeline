@@ -15,9 +15,14 @@ resource "kind_cluster" "this" {
         protocol       = "TCP"
       }
 
+      # The dbt project. Only needs to exist on the node's filesystem - the
+      # "dbt" DAG's KubernetesPodOperator mounts it into its own pod
+      # directly (a hostPath volume that reads this node path). It's a
+      # separate pod running a third-party image, not part of Airflow's own
+      # git-sync setup below, so it keeps its own simple local mount.
       extra_mounts {
-        host_path      = var.dags_host_path
-        container_path = var.dags_container_path
+        host_path      = var.dbt_host_path
+        container_path = var.dbt_container_path
       }
 
       dynamic "extra_mounts" {
@@ -63,19 +68,17 @@ resource "kubernetes_namespace" "airflow" {
 locals {
   webserver_secret_key = var.webserver_secret_key != "" ? var.webserver_secret_key : random_password.webserver_secret_key.result
 
-  dags_volume = {
-    name = "dags"
-    hostPath = {
-      path = var.dags_container_path
-      type = "DirectoryOrCreate"
-    }
-  }
-
-  dags_volume_mount = {
-    name      = "dags"
-    mountPath = "/opt/airflow/dags"
-    readOnly  = false
-  }
+  # This chart's git-sync feature is built into every pod template already
+  # (scheduler, dag-processor, workers, ...), so it needs no extraVolumes
+  # from us. We sync the whole repo (not just airflow/dags), so DAGs and
+  # the ingestion package always come from the same commit. That means the
+  # DAGs themselves end up one level deeper than Airflow expects by
+  # default, so we point AIRFLOW__CORE__DAGS_FOLDER at the right subfolder,
+  # and PYTHONPATH at the repo root so `import ingestion...` still works.
+  repo_env = [
+    { name = "PYTHONPATH", value = var.dags_repo_mount_path },
+    { name = "AIRFLOW__CORE__DAGS_FOLDER", value = "${var.dags_repo_mount_path}/airflow/dags" },
+  ]
 
   gcp_credentials_enabled = var.gcp_credentials_file != ""
 
@@ -93,10 +96,11 @@ locals {
     readOnly  = true
   }] : []
 
-  # Dataset per table lives in airflow/dags/config/tables.yml, not here -
-  # that's the single source of truth for where each table lands and its
+  # Dataset per table lives in ingestion/config/tables.yml, not here - that's
+  # the single source of truth for where each table lands and its
   # write_disposition (append/truncate).
   worker_env = concat(
+    local.repo_env,
     [
       { name = "GCS_BUCKET_NAME", value = var.gcs_bucket_name },
       { name = "GCP_PROJECT_ID", value = var.gcp_project_id },
@@ -135,8 +139,7 @@ locals {
           }
         ]
       }
-      extraVolumes      = [local.dags_volume]
-      extraVolumeMounts = [local.dags_volume_mount]
+      env = local.repo_env
       # Default failureThreshold (6) x periodSeconds (10) = 60s is too tight
       # for a local kind cluster on modest hardware; the api-server can take
       # longer than that to bind on first boot and gets stuck restarting.
@@ -146,35 +149,48 @@ locals {
     }
 
     scheduler = {
-      extraVolumes      = [local.dags_volume]
-      extraVolumeMounts = [local.dags_volume_mount]
+      env = local.repo_env
     }
 
     # Airflow 3 splits DAG parsing out of the scheduler into its own
-    # dagProcessor component/pod - it needs the DAGs mount too, otherwise
-    # it parses an empty folder and no DAGs ever show up in the UI.
+    # dagProcessor component/pod - it needs the same env, otherwise it
+    # looks for DAGs in the wrong folder and nothing shows up in the UI.
     dagProcessor = {
-      extraVolumes      = [local.dags_volume]
-      extraVolumeMounts = [local.dags_volume_mount]
+      env = local.repo_env
     }
 
     workers = {
-      extraVolumes      = concat([local.dags_volume], local.gcp_credentials_volume)
-      extraVolumeMounts = concat([local.dags_volume_mount], local.gcp_credentials_volume_mount)
+      extraVolumes      = local.gcp_credentials_volume
+      extraVolumeMounts = local.gcp_credentials_volume_mount
       env               = local.worker_env
     }
 
     triggerer = {
-      extraVolumes      = [local.dags_volume]
-      extraVolumeMounts = [local.dags_volume_mount]
+      env = local.repo_env
     }
 
     dags = {
+      # Where the synced repo lands in every pod. Airflow's own default
+      # (dags at $AIRFLOW_HOME/dags) doesn't fit here, since we sync more
+      # than just the dags folder - see AIRFLOW__CORE__DAGS_FOLDER above.
+      mountPath = var.dags_repo_mount_path
+
       persistence = {
         enabled = false
       }
+
+      # Same mechanism a real cluster uses: nodes never see your laptop's
+      # disk, so DAGs (and here, the whole repo) come from git instead. A
+      # sidecar container the chart adds on its own pulls this repo/branch
+      # on a timer and keeps every Airflow pod in sync.
       gitSync = {
-        enabled = false
+        enabled = true
+        repo    = var.dags_repo_url
+        branch  = var.dags_repo_branch
+        rev     = "HEAD"
+        depth   = 1
+        subPath = ""
+        period  = var.dags_repo_sync_period
       }
     }
 

@@ -1,0 +1,18 @@
+# No secrets in here on purpose - connection details come from env vars, so
+# the same file works locally and inside the "dbt" Airflow DAG's pod.
+#   GCP_PROJECT_ID                 - matches terraform/variables.tf project_id
+#   BQ_ANALYTICS_DATASET           - defaults to "analytics"
+#   GOOGLE_APPLICATION_CREDENTIALS - path to the service account key
+#     locally: export it to ../terraform/keys/your-service-account-key.json
+#     in the dbt pod: /opt/airflow/gcp/key.json (mounted by Terraform)
+ai_ready_data_pipeline:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: service-account
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset: "{{ env_var('BQ_ANALYTICS_DATASET', 'analytics') }}"
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      location: US
+      threads: 4
